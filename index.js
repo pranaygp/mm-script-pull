@@ -5,6 +5,7 @@ const AWS = require('aws-sdk')
 const uuid = require('node-uuid')
 const { Team, Script } = require('mm-schemas')(mongoose)
 const { send, buffer } = require('micro')
+const authenticate = require('mm-authenticate')(mongoose)
 
 mongoose.connect(process.env.MONGO_URL)
 mongoose.Promise = global.Promise
@@ -15,7 +16,7 @@ const s3 = new AWS.S3({
 
 const getObject = promisify(s3.getObject.bind(s3))
 
-module.exports = async (req, res) => {
+module.exports = authenticate(async (req, res) => {
   const urlParams = req.url.split('/')
   if(urlParams.length !== 2) {
     send(res, 400, 'Malformed URL')
@@ -33,9 +34,12 @@ module.exports = async (req, res) => {
   if(!team.latestScript) {
     send(res, 404, `No script uploaded for ${name}`)
   }
+  if(!team.latestScript.canBeAccessedBy(req.user)) {
+    send(res, 401, 'Unauthorized')
+  }
 
   // Get file from s3
   const data = await getObject({Bucket: 'mechmania', Key: team.latestScript.key})
 
   send(res, 200, data.Body)
-}
+})
